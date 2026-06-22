@@ -19,16 +19,32 @@ These two patterns motivate the modeling approach below: the historical record i
 
 ## Architecture: The Four Pillars
 
+
 ```mermaid
 flowchart TD
-    A["HAZARD MODULE<br/>HURDAT2 ingestion · Weibull MLE fitting<br/>stochastic_engine.py · hazard_footprint.py"]
-    B["EXPOSURE MODULE<br/>NOAA ENOW exposure base · log-normal TIV<br/>download_noaa_exposure.py · exposure_manager.py"]
-    C["VULNERABILITY MODULE<br/>Log-normal CDF fragility curves<br/>vulnerability.py"]
-    D["FINANCIAL MODULE<br/>Deductibles · policy limits · AAL / OEP<br/>financial_loss.py"]
+    subgraph SRC[Data Sources]
+        I1[(NOAA HURDAT2)]
+        I2[(NOAA ENOW)]
+    end
 
-    A --> C
-    B --> C
-    C --> D
+    subgraph CORE[Four-Stage Risk Engine]
+        H[HAZARD]
+        E[EXPOSURE]
+        V[VULNERABILITY]
+        F[FINANCIAL]
+    end
+
+    O(["Risk Metrics<br/>AAL · OEP · TVaR"])
+
+    I1 --> H
+    I2 --> E
+    H --> V
+    E --> V
+    V --> F
+    F --> O
+
+    style SRC fill:none,stroke:#888888,stroke-dasharray: 5 5
+    style CORE fill:none,stroke:#888888,stroke-dasharray: 5 5
 ```
 
 ### 1. Hazard Module
