@@ -4,6 +4,19 @@ An end-to-end Python framework for modeling property catastrophe tail risk over 
 
 ---
 
+## Historical Context: Why Simulation Is Necessary
+
+![Geospatial Distribution of Historical Hurricanes](plots/geospatial_real_map.png)
+*Geographic distribution of historical North Atlantic tropical cyclone tracks, NOAA HURDAT2.*
+
+![Historical Hurricane Frequency Trend](plots/historical_frequency_trend.png)
+*Annual North Atlantic storm counts, NOAA HURDAT2. Part of the upward trend reflects improved satellite-era detection capability after ~1970 rather than a confirmed climate signal alone; see the Discussion section of the accompanying [technical paper](CatRisk_hurricane_arxiv_v2.tex) for a fuller treatment.*
+
+These two patterns motivate the modeling approach below: the historical record is short, spatially uneven, and partly shaped by detection-era artifacts, so tail risk has to be estimated through simulation rather than read directly off ~170 years of observations.
+
+---
+
+
 ## Architecture: The Four Pillars
 
 ```mermaid
