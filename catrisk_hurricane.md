@@ -1,28 +1,86 @@
-project title: "Project Risk Engine: Quantifying 10,000 Years of Extreme Weather and Portfolio Insurance Liabilities" 
-category: "Climate & Catastrophe Risk Analytics" 
-skills: [Python, High-Performance Computing, PyArrow Parquet, Extreme Value Theory, Solvency Stress Testing] image: "/assets/images/portfolio_spatial_accumulation.jpg" summary: "Designed and engineered an enterprise-scale probabilistic catastrophe model that translates multi-era NOAA meteorological records and US economic datasets into a vectorized portfolio insurance pricing and solvency engine."
-The Mission: Bridging Atmospheric Science and Solvency Risk
-Climate change has fundamentally broken standard historical heuristics for pricing severe weather events. In the property catastrophe insurance domain, rare, high-severity tail risks (like a Category 5 hurricane directly striking a highly capitalized coastal center) are severely under-sampled in our short modern weather record. Relying strictly on raw historical averages leads to systemic mispricing, leaving insurance portfolios over-exposed to capital ruin.
-This project engineered a fully modular, production-grade Probabilistic Catastrophe Risk Engine. By synthesizing 170+ years of NOAA atmospheric data with federal socioeconomic indices, the system simulates 10,000 years of extreme weather interactions, mapping physical hurricane wind attenuation onto a multi-billion dollar asset register to calculate pure risk burn costs (AAL) and tail solvency thresholds (Exceedance Probability curves).
-The Core Technical Innovation: Overcoming Big Data Barriers
-Evaluating a stochastic event timeline across an expansive property portfolio generates an intense scaling challenge, triggering over 500 million simulated event-asset interactions. Attempting to process these massive matrices inside conventional data science architectures immediately triggers systemic out-of-memory crashes:
+---
+title: "Simulating Hurricane Risk to Price Insurance Losses"
+category: "Climate & Catastrophe Risk Analytics"
+skills: [Python, High-Performance Computing, PyArrow Parquet, Extreme Value Theory, Solvency Stress Testing]
+image: "/assets/images/portfolio_spatial_accumulation.jpg"
+summary: "An enterprise-scale probabilistic catastrophe model that turns 170 years of NOAA storm data and US economic data into a 10,000-year hurricane loss simulation — pricing insurance risk down to the individual property."
+---
+
+
+Insurers price hurricane risk using roughly 50 years of *reliable* storm data. That's not enough to know what a true 1-in-500-year storm looks like — and climate change is making the historical record even less useful. **Under-pricing that tail risk is how insurers go insolvent.**
+
+I built a full probabilistic catastrophe model — the same class of system used by Verisk/AIR and Moody's RMS — that simulates **10,000 years** of physically plausible hurricanes against a synthetic **$39.01B** Gulf & Atlantic coast property portfolio, and prices the resulting insurance losses down to the dollar.
+
+---
+
+## By the Numbers
+
+| | |
+|---|---|
+| 🌀 **10,000-year** stochastic storm catalog | built from 170 years of NOAA HURDAT2 records |
+| 🏠 **10,000 properties**, $39.01B insured value | synthesized from real NOAA county GDP data |
+| 📊 **500M+** simulated event-property interactions | the core computational bottleneck |
+| 💾 **50 MB** peak memory | down from a multi-GB out-of-memory crash |
+| 📉 **1.5 GB → 120 MB** on disk | columnar Parquet + Snappy compression |
+
+---
+
+## Where the Risk Lives
+
+<img src='/images/portfolio_spatial_accumulation.png'>
+*Insured loss accumulation across the coastal portfolio — bubble size is property value, color is simulated lifetime loss.*
+
+## What It Costs to Survive the Tail
+
+<img src='/images/exceedance_probability_curve.png'>
+*The capital question every insurer has to answer: how much do I need on the balance sheet to survive a 1-in-100 or 1-in-500 year storm?*
+
+| Return Period | Insured Loss |
+|---|---|
+| 1-in-10 years | $124,967 |
+| 1-in-50 years | $138.3M |
+| 1-in-100 years (solvency benchmark) | $381.7M |
+| 1-in-500 years (ruin boundary) | $1.87B |
+
+## Who Pays, By Construction Type
+
+<img src='/images/loss_composition_by_construction.png'>
+*Wood-frame residential absorbs disproportionate damage relative to reinforced-concrete commercial — exactly what 80 years of wind engineering would predict.*
+
+---
+
+## How It Works
+
+Four linked stages: the standard architecture across the cat-modeling industry:
+
+1. **Hazard** — Fit a continuous Weibull distribution to historical storm intensities (MLE), then simulate thousands of years of new storms, including Category 5 events the historical record has never directly observed.
+2. **Exposure** — Use NOAA economic indices to realistically place a synthetic property portfolio across six high-hazard coastal counties (Miami-Dade, Harris, Charleston, and others).
+3. **Vulnerability** — Convert each property's local wind speed into a physical damage percentage via log-normal fragility curves, by construction class.
+4. **Financial** — Apply real insurance contract terms — deductibles, policy limits — to convert physical damage into what an insurer actually pays out, then aggregate into Average Annual Loss (AAL) and Tail VaR.
+
+## The Engineering Problem Nobody Talks About
+
+A 10,000-year catalog against a multi-thousand-property portfolio produces **500+ million** event-asset interaction rows. Every naive pandas pipeline I tried died the same way:
+
+```
 numpy._core._exceptions._ArrayMemoryError: Unable to allocate 3.73 GiB for an array
-To resolve this bottleneck, I re-architected the pipeline from the ground up using Big Data Engineering principles:
-1. Memory-Conscious Disk Streaming via PyArrow
-Instead of forcing the application layer to load massive data frames globally into RAM, I implemented an unallocated streaming pipeline. Utilizing PyArrow Parquet file cursors (iter_batches()), the data layers are sliced into isolated, manageable blocks of 5,000,000 rows, processed via the computational vector layers, and instantly flushed to disk. Result: Active RAM consumption remained entirely flat underneath 50 megabytes throughout the entire 500-million-row simulation cascade.
-2. High-Precision Binary Storage Optimization
-Replaced textual CSV data structures with binary, columnar Apache Parquet files. Utilizing Snappy block compression and dictionary encoding, the system compressed a bulky 1.5 GB intermediate dataframe down to under 120 MB on disk, preserving strict 64-bit floating-point metadata precision and preventing precision loss from serialization artifacts.
-3. SIMD Parallel Vectorization
-Eradicated sluggish Python loops (iterrows) and high-overhead dataframe cross-joins. By implementing complex mathematical conditional tracking layers completely inside native NumPy array expressions (np.where, np.maximum, np.minimum), calculations that previously choked a single CPU core for hours are computed instantaneously at the compiled C-level utilizing instruction-level data parallelism.
-Methodological Deep Dive: The Analytical Pillars
-Pillar 1: Hazard Engine & Extreme Value Modeling
-The model extracts historical North Atlantic tropical cyclone data from NOAA’s HURDAT2 database. To eliminate statistical step-function reporting biases, the engine fits a continuous Weibull Distribution via Maximum Likelihood Estimation to model maximum wind intensities. This mathematical framework unlocks the ability to simulate intense, low-frequency tail events that have never been historically observed but are physically possible.
-Pillar 2: Industry Exposure Database (IED) Generation
-To build a realistic asset portfolio, the project writes an automated download utility that hits NOAA's Digital Coast server, extracts the raw Economics: National Ocean Watch (ENOW) Coastal Economy flat archives, and handles Windows-1252 character decoding anomalies in-memory. The engine uses county-level GDP indices as a proxy for economic density to dynamically distribute 10,000 properties across high-hazard coastal zones, assigning highly right-skewed Log-Normal Asset Valuations alongside structural engineering construction markers (Wood Frame, Masonry, Steel, Reinforced Concrete).
-Pillar 3: Physical Vulnerability Engineering
-The engine executes continuous damage functions to map local max wind speed intensities ($v$) to a physical Mean Damage Ratio (MDR). Driven by customized Log-Normal Cumulative Distribution Functions (CDFs), the vulnerability layer applies structural engineering resilience filters: highly fortified commercial infrastructures utilize high damage acceleration thresholds, while vulnerable residential wood frames model progressive envelope decay starting at lower wind points.
-Pillar 4: Actuarial Financial Customization
-The final module applies customized contractual policy insurance layers—including fixed-dollar deductibles and absolute policy limits—to calculate net insured liabilities. The engine translates these distributions into two major executive metrics:
-Average Annual Loss (AAL): The core long-term statistical expected burning cost used to calibrate risk premiums.
-Loss Return Period EP Matrix: Smoothly charts the exponential curve of catastrophic losses from 1-in-10 years up to 1-in-500 year extremes, establishing the capital reserves required to guarantee long-term balance sheet solvency.
+```
+
+The fix was treating this as a data engineering problem, not a modeling one:
+
+- **Streamed, never loaded.** PyArrow's `iter_batches()` processes the simulation in 5M-row chunks straight to disk — RAM stays flat under 50 MB regardless of dataset size.
+- **Binary, not text.** Columnar Parquet + Snappy compression cut storage by 85%+ with zero precision loss.
+- **Vectorized, not looped.** Replacing `iterrows()` with `np.where` / `np.maximum` pushed the math to compiled C-level array operations.
+
+---
+
+## Tech Stack
+
+- `Python` · `NumPy` · `pandas` · `SciPy` · `PyArrow` / `Parquet` · `Matplotlib` / `Seaborn`  \\
+- NOAA HURDAT2 & ENOW data
+
+## See It in Action
+
+| 💻 [View code on GitHub](https://github.com/kjrathore/CatRisk_HurricanLoss.git) | 📄 [Full technical writeup](https://github.com/kjrathore/CatRisk_HurricanLoss/blob/main/CatRisk_hurricane_arxiv_v1.pdf) |
+
 

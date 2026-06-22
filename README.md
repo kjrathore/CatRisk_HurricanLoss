@@ -1,113 +1,128 @@
 # Probabilistic Catastrophe Risk Model for Hurricane Loss Quantification
-An enterprise-grade, end-to-end Python framework utilizing extreme value statistics, high-performance geospatial arrays, and vectorized financial engines to model and price property catastrophe tail risk over a 10,000-year stochastic horizon.
+
+An end-to-end Python framework for modeling property catastrophe tail risk over a 10,000-year stochastic horizon, using extreme value statistics, vectorized geospatial arrays, and a streaming financial loss engine.
 
 ---
 
-## 🏛️ Architecture & The Four Pillars of Catastrophe Modeling
+## Architecture: The Four Pillars
 
-This framework is structurally built around the four standard quantitative pillars mandated by catastrophe modeling environments (e.g., Verisk/AIR, Moody's/RMS, and major reinsurance syndicates):
+```mermaid
+flowchart TD
+    A["HAZARD MODULE<br/>HURDAT2 ingestion · Weibull MLE fitting<br/>stochastic_engine.py · hazard_footprint.py"]
+    B["EXPOSURE MODULE<br/>NOAA ENOW exposure base · log-normal TIV<br/>download_noaa_exposure.py · exposure_manager.py"]
+    C["VULNERABILITY MODULE<br/>Log-normal CDF fragility curves<br/>vulnerability.py"]
+    D["FINANCIAL MODULE<br/>Deductibles · policy limits · AAL / OEP<br/>financial_loss.py"]
 
+    A --> C
+    B --> C
+    C --> D
+```
 
+### 1. Hazard Module
+`src/stochastic_engine.py`, `src/hazard_footprint.py`
 
-Code output
-Markdown documentation generated successfully.
+- Fits a continuous **Weibull distribution** (via `scipy.stats`) to historical North Atlantic hurricane peak winds from NOAA HURDAT2, enabling simulation of extreme events (up to Category 5, 165 kt) beyond the historical record.
+- Dual resolution modes, set in `config.yaml`:
+  - `spatial` — wind decay evaluated against regional macro-anchors.
+  - `individual` — explicit track vectors intercepted against every property.
+- Wind field attenuation uses a Haversine-distance Holland-style falloff, scaled by Radius of Maximum Winds (`r_max_km`) and decay coefficient (`alpha_decay`).
 
+### 2. Exposure Module
+`src/download_noaa_exposure.py`, `src/exposure_manager.py`
 
+- Builds a realistic Industry Exposure Database by downloading NOAA Digital Coast **Coastal Economy (ENOW)** data.
+- County-level GDP weights drive the spatial allocation of 10,000 synthetic properties across high-hazard coastal counties (Miami-Dade, Harris, Orleans, Charleston, etc.).
+- Property values are drawn from a right-skewed **log-normal** distribution, with construction class (Wood Frame, Masonry, Steel Frame, Reinforced Concrete) and occupancy type assigned per property.
 
-┌────────────────────────┐ ┌────────────────────────┐
-│ HAZARD MODULE │ │ EXPOSURE MODULE │
-│ HURDAT2 Optimization │ │ NOAA ENOW IED Base │
-│ Weibull Curve Fitting │ │ Log-Normal Valuation │
-└───────────┬────────────┘ └───────────┬────────────┘
-│ │
-└───────────────┬───────────────┘
-▼
-┌────────────────────────┐
-│ VULNERABILITY MODULE │
-│ Continuous Log-Normal │
-│ MDR Engineering CDF │
-└───────────┬────────────┘
-▼
-┌────────────────────────┐
-│ FINANCIAL ENGINE │
-│ Contractual Reshaping │
-│ Vectorized AAL / OEP │
-└────────────────────────┘
+### 3. Vulnerability Module
+`src/vulnerability.py`
 
+- Converts local wind speed into a **Mean Damage Ratio** (MDR ∈ [0, 1]) via log-normal CDF fragility curves.
+- Curve parameters (median failure threshold, dispersion) are defined per construction class in `config.yaml`.
 
+### 4. Financial Module
+`src/financial_loss.py`
 
-### 1. The Hazard Module (`src/stochastic_engine.py`, `src/hazard_footprint.py`)
-* **Continuous Tail Simulation:** Overcomes the limitation of short historical catalogs by fitting a continuous **Weibull Distribution** via `scipy.stats` to historical North Atlantic hurricane peaks (sourced from NOAA's HURDAT2). This simulates rare, intense events (e.g., severe Category 5 tracks up to 165 knots) that have never been historically observed but are climatologically viable.
-* **Dual Resolution Engine:** Dynamically switches via centralized configuration (`config.yaml`) between:
-  * `spatial` mode: Propagates wind field decay over regional macro geographical coordinate anchors.
-  * `individual` mode: Translates simulated landfall paths $(Lat_0, Lon_0)$ and azimuth translation heading vectors $\theta$ to track cross-line perpendicular minimum distances to every unique property asset coordinate.
-* **Wind Field Attenuation:** Executes a spherical distance-decay function (utilizing the Haversine formula) to scale wind falloff relative to the Radius of Maximum Winds ($R_{max}$) and empirical alpha decay coefficients ($\alpha$).
-
-### 2. The Exposure Module (`src/download_noaa_exposure.py`, `src/exposure_manager.py`)
-* **Real-World Asset Grounding:** Builds a realistic Industry Exposure Database (IED) by programmatically downloading and unpacking the **NOAA Digital Coast Coastal Economy (ENOW)** flat tables.
-* **Socioeconomic Wealth Weighting:** Eliminates hardcoded arbitrary proportions by extracting county-level Gross Domestic Product (GDP) and wage indices across high-hazard zones (e.g., Miami-Dade, FL; Harris, TX; Charleston, SC) to dynamically allocate wealth densities.
-* **Underwriting Attribute Synthesizer:** Seeds a multi-billion dollar portfolio of 10,000 unique assets configured with highly right-skewed **Log-Normal Property Valuations** (capturing low-frequency, high-value commercial centers vs. high-frequency residential structures) alongside explicit risk attributes like **Construction Class Type** (Wood Frame, Masonry, Steel Frame, Reinforced Concrete) and **Occupancy Type**.
-
-### 3. The Vulnerability Module (`src/vulnerability.py`)
-* **Physical Engineering Damage Curves:** Rather than relying on discrete step functions, the engine maps local maximum wind speed intensities ($v$) to a continuous **Mean Damage Ratio (MDR)** representing the structural percentage of asset destruction ($\text{MDR} \in [0.0, 1.0]$).
-* **Structural Fragility Functions:** Implements continuous engineering fragility curves driven by localized **Log-Normal Cumulative Distribution Functions (CDFs)**. High-resilience commercial structures (Reinforced Concrete, Steel) utilize strict wind acceleration thresholds, while vulnerable residential properties (Wood Frame) suffer progressive envelope failure at lower velocity points.
-
-### 4. The Financial Loss Module (`src/financial_loss.py`)
-* **Contractual Loss Reshaping:** Translates physical ground-up destruction values into insurance and reinsurance liabilities by passing losses through customized parameter policies, including **Fixed-Dollar Policy Deductibles** and **Absolute Liability Caps (Policy Limits)**.
-* **Actuarial Risk Pricing:** Aggregates multi-million row interaction matrices to compute crucial risk metrics:
-  * **Average Annual Loss (AAL):** The long-term statistical expected loss cost per year, establishing the pure burning cost baseline for primary pricing layers.
-  * **Occurrence Exceedance Probability (OEP) Curve:** Quantifies the tail probability that a portfolio's losses will exceed a specified dollar capacity boundary in any individual annualized window (e.g., determining the capital adequacy needed to survive a 1-in-100 or 1-in-500 year extreme shock).
+- Applies fixed-dollar deductibles and policy limit caps to ground-up loss to compute net insured liability.
+- Aggregates the simulation into:
+  - **Average Annual Loss (AAL)** — long-term expected burn cost.
+  - **Occurrence Exceedance Probability (OEP) curve** — capital required to survive 1-in-N year events.
 
 ---
 
-## ⚡ High-Performance Computing & Big Data Optimizations
+## Performance: Handling 500M+ Simulated Interactions
 
-Evaluating a stochastic catalog over a large portfolio creates a massive data scaling hurdle (10,000 years $\times$ thousands of property assets triggers **over 500 million simulated interactions**). Standard iteration loops instantly run into memory exhaustion walls. This framework implements three core big-data engineering design solutions:
+A 10,000-year catalog evaluated against a multi-thousand-property portfolio produces over 500 million event-asset interaction rows — enough to trigger out-of-memory errors in a naive pandas pipeline. Three engineering choices keep this tractable:
 
-1. **PyArrow Apache Parquet Storage Architecture:** Replaces heavy, high-overhead `.csv` tabular files with binary columnar `.parquet` storage structures. Utilizing Snappy block compression, raw data footprints shrink by **over 85%** (compressing 1.5 GB tables down to ~120 MB) while preserving strict 64-bit floating-point metadata precision.
-2. **Event-Batch Chunking & Disk Streaming:** Eradicates the dreaded `numpy._core._exceptions._ArrayMemoryError` by implementing an un-allocated file streaming architecture. Utilizing PyArrow's `iter_batches()`, the vulnerability and footprint engines chunk operations into explicit, safe slices of 5,000,000 rows, processing and flushing records straight to disk, keeping active RAM utilization flat under **50 megabytes** throughout the full execution.
-3. **Data-Layer SIMD Vectorization:** Bypasses sluggish Python loops (`iterrows`) completely. By designing calculations inside vectorized NumPy expressions (`np.where`, `np.maximum`, `np.minimum`), calculations that previously required hours of sequential processing now execute instantaneously at the compiled, under-the-hood C-level utilizing instruction-level data parallelism.
+| Technique | Implementation | Result |
+|---|---|---|
+| **Disk-streamed Parquet** | `pyarrow.ParquetFile.iter_batches()` reads/writes in chunks of up to 5,000,000 rows | Peak RAM stays flat under **50 MB** |
+| **Snappy compression** | Columnar binary storage replaces CSV | 1.5 GB → **~120 MB** on disk, no precision loss |
+| **SIMD vectorization** | `np.where`, `np.maximum`, `np.minimum` replace `iterrows()` | Compiled C-level array math instead of Python loops |
 
 ---
 
-## 🛠️ Project Setup & Installation
+## Results
 
-### Prerequisite Dependencies
-Ensure your virtual workspace environment has the required scientific, geospatial, and plotting libraries installed:
+**Occurrence Exceedance Probability curve** — insured loss severity by return period:
+
+![Exceedance Probability Curve](outputs/individual/exceedance_probability_curve.png)
+
+**Loss composition by construction class** — ground-up vs. insured loss:
+
+![Loss Composition by Construction](outputs/individual/loss_composition_by_construction.png)
+
+**Geographic accumulation of insured loss across the portfolio:**
+
+![Portfolio Spatial Accumulation](outputs/individual/portfolio_spatial_accumulation.png)
+
+---
+
+## Setup
+
 ```bash
 pip install numpy pandas scipy pyyaml pyarrow tqdm matplotlib seaborn contextily
+```
 
+## Configuration
 
-🚀 Execution Instructions
-The complete model is highly automated and driven by a central, user-modifiable configuration file.
-1. Configure the Parameters (config.yaml)
-Toggle your analysis resolution mode, update financial insurance policies, or alter physical weather variables:
+All model behavior is controlled centrally in `config.yaml`:
 
-
-
-YAML
+```yaml
 model_settings:
-  resolution_mode: "individual"  # Options: 'spatial' or 'individual'
+  resolution_mode: "individual"   # "spatial" or "individual"
 
-financial_structures:
-  residential_fixed_deductible: 2500.0
-  commercial_fixed_deductible: 25000.0
-  policy_limit_percentage_tiv: 0.90
+financial:
+  policy_limit_pct: 0.90
+  deductibles:
+    residential_fixed_usd: 2500.0
+    commercial_fixed_usd: 15000.0
+```
 
+## Running the Pipeline
 
-2. Execute the Analytical Cascade
-Run the entire catastrophic simulation pipeline back-to-back using package module runtime execution flags from your root workspace terminal:
+Each stage reads the previous stage's output, so run them in order:
 
+```bash
+python -m src.download_noaa_exposure   # Pull NOAA ENOW county GDP data
+python -m src.exposure_manager         # Build the synthetic property portfolio
+python -m src.stochastic_engine        # Generate the 10,000-year event catalog
+python -m src.hazard_footprint         # Compute per-property wind footprints
+python -m src.vulnerability            # Convert wind speed to damage ratio
+python -m src.financial_loss           # Apply policy terms, compute insured loss
+python -m src.visualize_results        # Generate all output plots
+```
 
+## References
 
-Bash
-python -m src.download_noaa_exposure
-python -m src.exposure_manager
-python -m src.stochastic_engine
-python -m src.hazard_footprint
-python -m src.vulnerability
-python -m src.financial_loss
-python -m src.visualize_results
+- Clark, K. M. (1986). *Use of Computer Simulation Modeling in Estimating Insurance Disaster Losses.* The Journal of Insurance Regulation, 5, 23–35.
+- Friedman, D. G. (1984). *Natural Hazard Risk Assessment for an Insurance Program.* The Geneva Papers on Risk and Insurance, 9(1), 57–81.
+- Holland, G. J. (1980). *An Analytical Model of the Wind and Pressure Profiles in Hurricanes.* Monthly Weather Review, 108(8), 1212–1218.
+- Strupczewski, W. G., Singh, V. P., & Feluch, W. (2001). *Non-stationary approach to selection of a flood frequency distribution.* Journal of Hydrology, 248(1-4), 123–142.
+- Woo, G. (2011). *Calculating Catastrophe.* Imperial College Press.
+- NOAA National Hurricane Center. *HURDAT2 Tropical Cyclone Dataset.*
+- NOAA Office for Coastal Management. *Economics: National Ocean Watch (ENOW).*
 
+---
 
-"""
+> **Note:** This framework was developed with the help of various Generative AI tools. Please review and validate the methodology and code before relying on it. Feedback, critique, and discussion are very welcome.
