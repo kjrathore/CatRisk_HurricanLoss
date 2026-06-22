@@ -1,0 +1,12 @@
+requests
+numpy
+pandas
+sweetviz
+geopandas
+geoplot 
+shapely
+geodatasets
+tqdm
+pyyaml
+scipy
+pyarrow

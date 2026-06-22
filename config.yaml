@@ -1,0 +1,52 @@
+# config.yaml
+# ==============================================================================
+#                      CATASTROPHE RISK MODEL CONFIGURATION
+# ==============================================================================
+
+model_settings:
+  # The core execution framework. 
+  # Options:
+  #   - "spatial": Simulated storms are anchored to regional coordinate points using Haversine distance.
+  #   - "individual": Simulated storms generate an explicit track vector path for property-by-property interception.
+  resolution_mode: "individual"
+
+hazard:
+  # Radius of Maximum Winds (R_max) in kilometers. 
+  # Represents the physical distance from the center of a hurricane to the band of strongest winds.
+  r_max_km: 50.0
+
+  # Exponential wind-field decay rate coefficient (Alpha). 
+  # Determines how rapidly wind speeds drop off as the distance from the hurricane core increases.
+  alpha_decay: 0.65
+
+  # Geographic macro-anchors used to anchor stochastic track paths or act as regional centers.
+  exposure_anchors:
+    - {name: "Miami", lat: 25.7617, lon: -80.1918}
+    - {name: "Tampa", lat: 27.9506, lon: -82.4572}
+    - {name: "Jacksonville", lat: 30.3322, lon: -81.6557}
+    - {name: "Orlando", lat: 28.5383, lon: -81.3792}
+    - {name: "Tallahassee", lat: 30.4383, lon: -84.2807}
+    - {name: "Key West", lat: 24.5557, lon: -81.7800}
+
+vulnerability:
+  # Engineering vulnerability curve settings formatted as a cumulative log-normal distribution.
+  #   - scale: The wind speed median knot threshold (50% damage expectation).
+  #   - s: The shape/dispersion parameter (slope steepness of structural failure).
+  curves:
+    "Wood Frame":           {scale: 115.0, s: 0.18}  # Highly vulnerable residential structures
+    "Masonry":              {scale: 130.0, s: 0.16}  # Mid-resilience residential/light commercial structures
+    "Steel Frame":           {scale: 155.0, s: 0.14}  # Sturdy engineering-class commercial structures
+    "Reinforced Concrete":  {scale: 175.0, s: 0.12}  # High-resilience commercial or heavy utility structures
+
+financial:
+  # Policy limit expressed as a decimal percentage of Total Insured Value (TIV).
+  # Cap on insurer liabilities per site impact (e.g., 0.90 means the insurer pays up to 90% of TIV).
+  policy_limit_pct: 0.90
+
+  # Deductibles represent the financial risk retained by the property owner before policy coverage kicks in.
+  deductibles:
+    # Fixed dollar retention amount subtracted from ground-up losses for residential exposures.
+    residential_fixed_usd: 2500.0
+    
+    # Fixed dollar retention amount subtracted from ground-up losses for commercial exposures.
+    commercial_fixed_usd: 15000.0

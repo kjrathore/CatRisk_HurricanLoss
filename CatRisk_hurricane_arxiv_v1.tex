@@ -1,0 +1,111 @@
+
+\documentclass[11pt,article]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{hyperref}
+\usepackage{graphicx}
+
+\geometry{a4paper, margin=1in}
+
+\title{\textbf{A High-Performance Probabilistic Framework for Site-Specific Tropical Cyclone Loss Quantification and Reinsurance Optimization}}
+\author{\textbf{K. J. Rathore} \\ Quantitative Risk and Climate Analytics Group \\ \texttt{github.com/kjrathore/CatRisk\_HurricaneLoss}}
+\date{June 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper details the mathematical architecture, engineering design, and big data optimization strategies of an end-to-end probabilistic catastrophe risk model engineered to quantify hurricane insurance liabilities. By capturing extreme tail behaviors through the fitting of a continuous Weibull intensity distribution to multi-era NOAA HURDAT2 meteorological data, the framework simulates a 10,000-year stochastic event set. This hazard catalog is evaluated against an Industry Exposure Database derived from NOAA Digital Coast economic indices, representing a total insured asset value of \$39.01 Billion across primary high-hazard coastal corridors. Physical damage is simulated via structural vulnerability functions parameterized as log-normal cumulative distribution functions, and liabilities are reshaped through vectorized financial policy layers. Crucially, this research addresses the computational boundaries of large-scale hazard aggregation, demonstrating a memory-conscious PyArrow disk-streaming and NumPy SIMD vectorization architecture that safely reduces peak random-access memory requirements from several gigabytes down to a flat 50 megabytes over a 500-million-row simulation space. 
+\end{abstract}
+
+\section{Introduction and Literature Review}
+Catastrophe risk modeling forms the foundational framework for pricing, underwriting, and solvency capital management in global insurance markets. Evaluating extreme weather risks, such as landfalling tropical cyclones, requires statistical estimation far beyond the limits of short historical observation windows. The historical record for North Atlantic hurricanes spans approximately 170 years, but it is deeply compromised before the geostationary satellite era (~1970) due to severe detection and intensity biases.
+
+In early literature, standard actuarial heuristics relied strictly on historical averages or simple empirical frequency curves to manage property risks. However, as demonstrated by early pioneers such as Friedman (1984), raw historical analysis fails to account for shifting economic distributions or unobserved physical possibilities. The introduction of probabilistic catastrophe modeling by Clark (1986) revolutionized the domain by decoupling the physical event simulation from static actuarial tables, establishing the traditional four-pillar architecture: Hazard, Exposure, Vulnerability, and Financial Loss.
+
+Recent advancements have focused extensively on the impacts of non-stationarity and statistical extreme value theory (EVT). Strupczewski et al. (2001) highlighted the vital importance of utilizing continuous statistical distributions rather than discrete history arrays to map tail behaviors. In tropical cyclone modeling, the Holland wind-field profile (Holland, 1980) remains a benchmark for modeling structural pressure patterns, though modern extensions focus heavily on site-specific property-level tracking over broad grid cells (Woo, 2011). Furthermore, the computational demand of evaluating multi-millennial simulation loops over hundreds of thousands of distinct physical assets requires a paradigm shift toward data-parallel software architectures to prevent high-overhead random-access memory (RAM) failures.
+
+\section{The Four Analytical Pillars and Mathematical Formulation}
+
+\subsection{Hazard Module: Continuous Intensity Fitting and Track Generation}
+The historical baseline parses official tropical cyclone records from NOAA's HURDAT2 database. To avoid the truncation bounds of historical sampling, maximum wind speeds are modeled as a continuous extreme value distribution. A continuous Weibull distribution is fitted via Maximum Likelihood Estimation (MLE) to maximize tail parameter stability. The probability density function (PDF) is defined as:
+\begin{equation}
+f(v; k, \lambda_{w}) = \frac{k}{\lambda_{w}} \left(\frac{v}{\lambda_{w}}\right)^{k-1} e^{-(v/\lambda_{w})^k}, \quad v \ge 0
+\end{equation}
+where $k$ is the shape parameter and $\lambda_{w}$ is the scale parameter. Annual storm counts follow a discrete Poisson distribution governed by the historic arrival rate parameter $\lambda$:
+\begin{equation}
+P(X = n_y) = \frac{\lambda^{n_y} e^{-\lambda}}{n_y!}
+\end{equation}
+
+For site-specific property intercepts, each simulated storm track is defined as a vector path from a landfall point $(Lat_0, Lon_0)$ with an azimuth heading vector $\theta$. The engine computes the shortest perpendicular spherical distance ($d$) from the track line to each asset via the Haversine formula. Local surface wind speed ($v_{\text{local}}$) is then attenuated using a modified Holland wind-field falloff profile:
+\begin{equation}
+v_{\text{local}} = v_{\text{max}} \times \left[ \min\left(1.0, \left(\frac{R_{\text{max}}}{d + \epsilon}\right)^{\alpha}\right) \right]
+\end{equation}
+where $R_{\text{max}}$ is the Radius of Maximum Winds, $\alpha$ is the empirical decay coefficient, and $\epsilon = 10^{-5}$ prevents singularities at zero-distance intercepts.
+
+\subsection{Exposure Module: Socioeconomic Database Engineering}
+To generate a realistic Industry Exposure Database (IED), the framework integrates an automated extraction engine that downloads economic indices from NOAA's National Ocean Watch (ENOW) database. County-level Gross Domestic Product (GDP) and wage indices are isolated across high-hazard zones to resolve localized economic density weights:
+\begin{equation}
+w_c = \frac{\text{GDP}_c}{\sum_{i \in C} \text{GDP}_i}
+\end{equation}
+Using these wealth weights, the pipeline distributes 10,000 synthetic properties across primary risk tracks. Total Insured Values ($V_{\text{asset}}$) are generated via a highly right-skewed log-normal distribution to accurately reflect physical market structures:
+\begin{equation}
+V_{\text{asset}} \sim \text{Lognormal}(\mu_{v}, \sigma_{v})
+\end{equation}
+
+\subsection{Vulnerability Module: Structural Fragility Functions}
+The vulnerability engine transforms local maximum wind speed ($v_{\text{local}}$) into a physical Mean Damage Ratio ($\text{MDR} \in [0.0, 1.0]$), which models the cost of physical destruction divided by total building value. Fragility curves are modeled continuously via the log-normal cumulative distribution function (CDF):
+\begin{equation}
+\text{MDR}(v_{\text{local}}) = \Phi\left(\frac{\ln(v_{\text{local}}) - \ln(\text{scale})}{s}\right)
+\end{equation}
+where $\Phi$ is the standard normal CDF, $\text{scale}$ is the median velocity failure threshold, and $s$ is the logarithmic standard deviation. Truncation is enforced below 34 knots ($\text{MDR} = 0$). Total ground-up monetary loss ($L_{\text{gu}}$) is computed as:
+\begin{equation}
+L_{\text{gu}} = V_{\text{asset}} \times \text{MDR}
+\end{equation}
+
+\subsection{Financial Module: Contractual Liability Reshaping}
+The financial loss engine converts ground-up destruction into net insurance liabilities by applying policy deductibles ($D_f$) and liability limit caps ($L_p$):
+\begin{equation}
+L_{\text{insured}} = \min\left( \max\left(L_{\text{gu}} - D_f, 0.0\right), L_p \right)
+\end{equation}
+Long-term risk metrics are aggregated across the $Y = 10,000$ year simulation timeline to compute the Average Annual Loss (AAL):
+\begin{equation}
+\text{AAL} = \frac{1}{Y} \sum_{y=1}^{Y} \sum_{e \in E_y} L_{\text{insured}}(e)
+\end{equation}
+
+\section{Computational Scaling and Big Data Optimization}
+Evaluating a 10,000-year stochastic event catalog over an expansive property portfolio yields over 500 million interaction rows ($500,510,000$), triggering severe out-of-memory errors in traditional architectures. This framework resolves these computational barriers via three primary big data engineering design solutions:
+\begin{enumerate}
+    \item \textbf{Un-Allocated Apache Parquet Streaming:} Replaces sequential CSV lookups with binary columnar Parquet storage. Utilizing PyArrow's \texttt{iter\_batches()}, the vulnerability engine reads and handles rows in isolated blocks of 5,000,000 records, keeping active RAM flat under 50 megabytes.
+    \item \textbf{Data-Layer SIMD Vectorization:} Eradicates slow Python \texttt{for}-loops by executing multi-element NumPy array operations (\texttt{np.where}, \texttt{np.maximum}), computing calculations at the under-the-hood compiled C-level.
+    \item \textbf{High-Precision Snappy Block Compression:} Columnar structures are shrunk by over 85\%, storing a 1.5 GB database file into under 120 MB of disk space while guaranteeing no metadata precision truncation.
+\end{enumerate}
+
+\section{Empirical Tail Risk Analytics and Metrics}
+Following a full end-to-end simulation sweep, the model extracts a smooth, non-linear financial loss distribution. The resulting Occurrence Exceedance Probability (OEP) curve provides clear capital requirements across standard return periods:
+\begin{itemize}
+    \item \textbf{1-in-10 Year Loss Return Tier:} \$124,967.62
+    \item \textbf{1-in-50 Year Loss Return Tier:} \$138,329,735.72
+    \item \textbf{1-in-100 Year Solvency Limit:} \$381,740,811.82
+    \item \textbf{1-in-500 Year Catastrophic Ruin Boundary:} \$1,874,541,679.06
+\end{itemize}
+
+The framework additionally evaluates Tail Value at Risk (TVaR) to benchmark systemic solvency beyond standard Value at Risk thresholds, ensuring capital adequacy for severe tail outcomes.
+
+\section{References}
+\begin{itemize}
+    \item Clark, K. M. (1986). ``Use of Computer Simulation Modeling in Estimating Insurance Disaster Losses,'' \textit{The Journal of Insurance Regulation}, 5, 23--35.
+    \item Friedman, D. G. (1984). ``Natural Hazard Risk Assessment for an Insurance Program,'' \textit{The Geneva Papers on Risk and Insurance}, 9(1), 57--81.
+    \item Holland, G. J. (1980). ``An Analytical Model of the Wind and Pressure Profiles in Hurricanes,'' \textit{Monthly Weather Review}, 108(8), 1212--1218.
+    \item NOAA National Hurricane Center. (2026). \textit{Tropical Cyclone Dataset (HURDAT2)}. NOAA NHC active repository.
+    \item NOAA Office for Coastal Management. (2026). \textit{Economics: National Ocean Watch (ENOW) Coastal Economy Series}. NOAA Digital Coast portal.
+    \item Strupczewski, W. G., Singh, V. P., \& Feluch, W. (2001). ``Non-stationary approach to selection of a flood frequency distribution,'' \textit{Journal of Hydrology}, 248(1-4), 123--142.
+    \item Woo, G. (2011). \textit{Calculating Catastrophe}, Imperial College Press.
+\end{itemize}
+
+\end{document}

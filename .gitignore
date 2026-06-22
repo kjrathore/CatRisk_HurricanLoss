@@ -1,3 +1,10 @@
+# outputs heavy files
+data/individual/hazard_footprint_matrix.parquet
+data/individual/portfolio_damage_matrix.parquet
+data/individual/portfolio_financial_matrix.parquet
+
+data/spatial
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
